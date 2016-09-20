@@ -22,6 +22,8 @@ use MooX qw(
 	+JSON
 );
 
+use Scalar::Util qw(reftype);
+
 =head1 DESCRIPTION
 
 This library gives an easy way to access the API of L<Authy|https://www.authy.com/> 2-factor authentification system.
@@ -56,6 +58,20 @@ has sandbox => (
 );
 
 sub _build_sandbox { 0 }
+
+=attr response
+
+Gives back the full (decoded) JSON response to the last request.
+
+=cut
+
+has response => (
+	is => 'rw',
+	predicate => 1,
+	clearer => 1,
+);
+
+=cut
 
 =attr error
 
@@ -164,20 +180,71 @@ sub BUILDARGS {
 	return { @args };
 }
 
+sub request {
+	my ($self, $req) = @_;
+	my $response = $self->useragent->request($req);
+
+	if ($response->is_success) {
+		my $decoded = eval { $self->json->decode($response->content) };
+		$self->response($decoded);
+	}
+
+	return $response;
+}
+
 sub make_url {
 	my ( $self, @args ) = @_;
 	my $url = join('/',$self->base_uri,'protected','json',@args);
 	return URI->new($url);
 }
 
+sub parse_args {
+	my ($self, $args, $param_names) = @_;
+
+	if (ref $args->[0] and reftype($args->[0]) eq 'HASH') {
+		return %{ $args->[0] };
+	}
+
+	my %args;
+	@args{ @$param_names } = @$args;
+
+	return %args;
+}
+
+sub clear_state {
+	my $self = shift;
+	$self->clear_errors;
+	$self->clear_response;
+}
+
+sub handle_response {
+	my ( $self, $response ) = @_;
+
+	my $data = $self->json->decode($response->content);
+	$self->response($data);
+
+	if ($response->is_success) {
+		return 1;
+	} else {
+		$self->errors($data->{errors});
+		return 0;
+	}
+}
+
 sub new_user_request {
-	my ( $self, $email, $cellphone, $country_code ) = @_;
+	my $self = shift;
+	my %args = $self->parse_args(\@_, [qw(email cellphone country_code send_install_link)]);
+
 	my $uri = $self->make_url('users','new');
 	my @post = (
-		'user[email]' => $email,
-		'user[cellphone]' => $cellphone,
+		'user[email]'        => $args{email},
+		'user[cellphone]'    => $args{cellphone},
+		'user[country_code]' => $args{country_code} || 1,
 	);
-	push @post, 'user[country_code]' => $country_code if $country_code;
+
+	push @post, 'send_install_link_via_sms' => $args{send_install_link} 
+		if defined $args{send_install_link};
+
 	return POST($uri->as_string, [ @post ]);
 }
 
@@ -188,12 +255,14 @@ parameters and gives back the id for this user. Authy will generate the
 user if he doesn't exist (verified by cellphone number), on a matching
 entry it just gives back the existing user id.
 
+Returns the new user id for success, and 0 for failure.
+
 =cut
 
 sub new_user {
 	my $self = shift;
-	$self->clear_errors;
-	my $response = $self->useragent->request($self->new_user_request(@_));
+	$self->clear_state;
+	my $response = $self->request($self->new_user_request(@_));
 	my $data = $self->json->decode($response->content);
 	if ($response->is_success) {
 		return $data->{user}->{id};
