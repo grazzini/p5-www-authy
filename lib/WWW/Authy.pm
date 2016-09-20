@@ -284,12 +284,14 @@ Verifies the first parameter as user id against the second parameter the token.
 It gives back a true or a false value, it still could be another error then an
 invalid token, so far this module doesnt differ.
 
+Returns 1/0 for success/failure.
+
 =cut
 
 sub verify {
 	my $self = shift;
-	$self->clear_errors;
-	my $response = $self->useragent->request($self->verify_request(@_));
+	$self->clear_state;
+	my $response = $self->request($self->verify_request(@_));
 	if ($response->is_success) {
 		return 1;
 	} else {
@@ -299,30 +301,228 @@ sub verify {
 	}
 }
 
-sub sms_request {
-	my ( $self, $id ) = @_;
-	my $uri = $self->make_url('sms',$id);
+sub sms_or_call_request {
+	my $self = shift;
+	my $type = shift;
+
+	my @params = qw(action action_message force); 
+	my %args   = $self->parse_args(\@_, [id => @params]);
+
+	my $uri = $self->make_url($type,$args{id});
+
+	for my $param (@params) {
+		$uri->query_param( $param => $args{$param} ) 
+			if defined $args{$param};
+	}
+
 	return GET($uri->as_string);
+}
+
+sub sms_request {
+	my $self = shift;
+	$self->sms_or_call_request(sms => @_);
 }
 
 =method sms
 
-Send a SMS to the given user id. Please be aware that this may produce cost.
-See the pricing on L<http://www.authy.com/pricing/> for more informations.
+Send a SMS to the given user id. Please be aware that this may incur fees.
+See the pricing on L<http://www.authy.com/pricing/> for more information.
+
+Optional parameters C<action>, C<action_message>, and C<force> are described
+in Authy's API documentation.
+
+  $authy->sms($id);
+  $authy->sms($id, $action, $action_message, $force);
+  $authy->sms({ 
+      id => $id,
+      action => "login",
+      action_message => "Here is your login key",
+      force => 1
+  });
+
+Returns 1/0 for success/failure.
 
 =cut
 
 sub sms {
 	my $self = shift;
-	$self->clear_errors;
-	my $response = $self->useragent->request($self->sms_request(@_));
-	if ($response->is_success) {
-		return 1;
-	} else {
-		my $data = $self->json->decode($response->content);
-		$self->errors($data->{errors});
-		return 0;
+	$self->clear_state;
+	my $response = $self->request($self->sms_request(@_));
+	return $self->handle_response($response);
+}
+
+sub call_request {
+	my $self = shift;
+	$self->sms_or_call_request(call => @_);
+}
+
+=method call
+
+Send a token via phone call to the given user id. Please be aware that this may
+incur fees. See the pricing on L<http://www.authy.com/pricing/> for more
+information.
+
+Optional parameters C<action>, C<action_message>, and C<force> are described
+in Authy's API documentation.
+
+  $authy->call($id);
+  $authy->call($id, $action, $action_message, $force);
+  $authy->call({ id => $id, ... });
+
+Returns 1/0 for success/failure.
+
+=cut
+
+sub call {
+	my $self = shift;
+	$self->clear_state;
+	my $response = $self->request($self->call_request(@_));
+	return $self->handle_response($response);
+}
+
+sub delete_request {
+	my $self = shift;
+	my %args = $self->parse_args(\@_, [qw(id user_ip)]);
+
+	my $uri = $self->make_url('users', $args{id}, 'delete');
+
+	my @post;
+	push @post, user_ip => $args{user_ip} if $args{user_ip};
+
+	return POST($uri->as_string, \@post);
+}
+
+=method delete_user
+
+Delete the user from Authy's database.
+
+=cut
+
+sub delete_user {
+	my $self = shift;
+	$self->clear_state;
+	my $response = $self->request($self->delete_request(@_));
+	return $self->handle_response($response);
+}
+
+sub register_activity_request {
+	my $self = shift;
+
+	my @params = qw( type user_ip data );
+	my %args   = $self->parse_args(\@_, [id => @params]);
+
+	my $uri = $self->make_url('users', $args{id}, 'register_activity');
+	my @post;
+
+	for my $param (@params) {
+		push @post, $param, $args{$param} if defined $args{$param};
 	}
+
+	return POST($uri->as_string, \@post);
+}
+
+=method register_activity
+
+Authy says that if you register certain types of activities (which include
+"password_reset", "banned", "unbanned", "cookie_login") with them, then
+they can detect certain kinds of misbehavior.
+
+The parameters are C<id>, C<type>, C<user_ip>, and C<data>.
+
+  $authy->register_activity($id, $type, $user_ip, $data);
+  $authy->register_activity({ id => $id ... });
+
+=cut
+
+sub register_activity {
+	my $self = shift;
+	my $response = $self->request($self->register_activity_request(@_));
+	return $self->handle_response($response);
+}
+
+sub application_info_request {
+	my $self = shift;
+	my $type = shift;
+	my %args = $self->parse_args(\@_, [qw( user_ip )]);
+
+	my $uri = $self->make_url('app', $type);
+	$uri->query_param( user_ip => $args{user_ip} ) if $args{user_ip};
+	return GET($uri->as_string);
+}
+
+sub application_details_request {
+	my $self = shift;
+	return $self->application_info_request('details');
+}
+
+=method application_details
+
+Returns some metadata Authy keeps about your application.
+
+  my $details = $authy->application_details;
+  my $details = $authy->application_details($user_ip);
+  my $details = $authy->application_details({ user_ip => $user_ip });
+
+=cut
+
+sub application_details {
+	my $self = shift;
+	$self->clear_state;
+
+	my $response = $self->request($self->application_details_request(@_));
+	$self->handle_response($response);
+	return $self->response;
+}
+
+sub user_status_request {
+	my $self = shift;
+	my %args = $self->parse_args(\@_, [qw( id user_ip )]);
+
+	my $uri = $self->make_url('users', $args{id}, 'status');
+	$uri->query_param( user_ip => $args{user_ip} ) if $args{user_ip};
+	return GET($uri->as_string);
+}
+
+=method user_status
+
+Returns some data Authy keeps about the given user.
+
+  my $status = $authy->user_status($id);
+  my $status = $authy->user_status({ id => $id });
+
+=cut
+
+sub user_status {
+	my $self = shift;
+	$self->clear_state;
+
+	my $response = $self->request($self->user_status_request(@_));
+	$self->handle_response($response);
+	return $self->response;
+}
+
+sub application_stats_request {
+	my $self = shift;
+	return $self->application_info_request('stats');
+}
+
+=method application_stats
+
+Returns some usage and billing statistics about your application.
+
+  my $stats = $authy->application_stats;
+  my $stats = $authy->application_stats($user_ip);
+  my $stats = $authy->application_stats({ user_ip => $user_ip });
+
+=cut
+
+sub application_stats {
+	my $self = shift;
+	$self->clear_state;
+
+	my $response = $self->useragent->request($self->application_stats_request(@_));
+	$self->handle_response($response);
+	return $self->response;
 }
 
 1;
