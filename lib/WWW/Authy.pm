@@ -5,12 +5,34 @@ package WWW::Authy;
 
   my $authy = WWW::Authy->new($authy_api_key);
 
-  # email, cellphone, country code (optional)
-  my $id = $authy->new_user('email@universe.org','555-123-2345','1');
+  # email, cellphone, country code (optional), send_install_link (optional)
+  my $id = $authy->new_user('email@universe.org','555-123-2345','1', '0');
+
+  # Alternatively, with named args:
+  my $id = $authy->new_user({
+      email => 'email@universe.org',
+      cellphone => '555-123-2345',
+      country_code => '1',        # optional, default is 1 (USA)
+      send_install_link => '0',   # optional, default is true
+  });
+
+  $authy->sms($id)           or print (Dumper $authy->errors);
+  $authy->call($id)          or print (Dumper $authy->errors);
 
   $authy->verify($id,$token) or print (Dumper $authy->errors);
 
-  $authy->sms($id); # send sms for token
+  $authy->delete_user($id)   or print (Dumper $authy->errors);
+
+  $authy->register_activity({
+      id      => $id,
+      type    => 'reset_password',
+      user_ip => $ip,
+      data    => \%extra_data,
+  });
+
+  my $info       = $authy->user_status($id);
+  my $app_info   = $authy->application_details;
+  my $app_status = $authy->application_status;
 
 =cut
 
