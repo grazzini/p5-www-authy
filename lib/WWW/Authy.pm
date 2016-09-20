@@ -104,6 +104,9 @@ has useragent => (
 sub _build_useragent {
 	my ( $self ) = @_;
 	LWP::UserAgent->new(
+		default_headers => HTTP::Headers->new(
+			'X-Authy-API-Key' => $self->api_key,
+		),
 		agent => $self->useragent_agent,
 		$self->has_useragent_timeout ? (timeout => $self->useragent_timeout) : (),
 	);
@@ -164,9 +167,7 @@ sub BUILDARGS {
 sub make_url {
 	my ( $self, @args ) = @_;
 	my $url = join('/',$self->base_uri,'protected','json',@args);
-	my $uri = URI->new($url);
-	$uri->query_param( api_key => $self->api_key );
-	return $uri;
+	return URI->new($url);
 }
 
 sub new_user_request {
