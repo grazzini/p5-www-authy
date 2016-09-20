@@ -3,20 +3,23 @@ use strict;
 use warnings;
 use Test::More;
 
-if (defined $ENV{WWW_AUTHY_TEST_API_KEY_SANDBOX}
-	&& defined $ENV{WWW_AUTHY_TEST_API_KEY_LIVE}
-	&& defined $ENV{WWW_AUTHY_TEST_CELLPHONE_LIVE}
-	&& defined $ENV{WWW_AUTHY_TEST_EMAIL_LIVE}) {
+use_ok('WWW::Authy');
 
-	use_ok('WWW::Authy');
+if ($ENV{WWW_AUTHY_TEST_API_KEY_SANDBOX}) {
+	my $authy = WWW::Authy->new($ENV{WWW_AUTHY_TEST_API_KEY_SANDBOX}, sandbox => 1);
+	isa_ok($authy,'WWW::Authy','sandbox authy object');
 
-	my $sandbox_authy = WWW::Authy->new($ENV{WWW_AUTHY_TEST_API_KEY_SANDBOX}, sandbox => 1);
-	isa_ok($sandbox_authy,'WWW::Authy','sandbox authy object');
+	my $id = $authy->new_user('someone@universe.org','555-123-1234','1');
+	ok($id,'Checking that user is generated in sandbox');
+	ok($authy->verify($id,'0000000'),'Testing the cheat token of sandbox');
+} else {
+	note 'Not doing sandbox tests without WWW_AUTHY_TEST_API_KEY_SANDBOX';
+}
 
-	my $sandbox_id = $sandbox_authy->new_user('someone@universe.org','555-123-1234','1');
-	ok($sandbox_id,'Checking that user is generated in sandbox');
-	ok($sandbox_authy->verify($sandbox_id,'0000000'),'Testing the cheat token of sandbox');
-
+if ($ENV{WWW_AUTHY_TEST_API_KEY_LIVE}
+	&& $ENV{WWW_AUTHY_TEST_CELLPHONE_LIVE}
+	&& $ENV{WWW_AUTHY_TEST_EMAIL_LIVE}) 
+{
 	my $authy = WWW::Authy->new($ENV{WWW_AUTHY_TEST_API_KEY_LIVE});
 	isa_ok($authy,'WWW::Authy','authy object');
 
@@ -25,11 +28,45 @@ if (defined $ENV{WWW_AUTHY_TEST_API_KEY_SANDBOX}
 		$ENV{WWW_AUTHY_TEST_CELLPHONE_LIVE},
 		$ENV{WWW_AUTHY_TEST_COUNTRY_CODE_LIVE}
 	);
-	ok($id,'Checking that user is generated in live');
+	ok($id,'Checking that user is generated in live environment');
+
 	ok(!$authy->verify($id,'000000'),'Testing random token to fail');
 
+	if ($ENV{WWW_AUTHY_TEST_VERIFY_INTERACTIVELY}) {
+		require Term::ReadLine;
+		ok $authy->sms($id), "Testing ->sms"
+			or diag explain $authy->response;
+
+		my $term   = Term::ReadLine->new("WWW::Authy-test");
+		my $prompt = "Enter code sent to $ENV{WWW_AUTHY_TEST_CELLPHONE_LIVE}: ";
+
+		my $code = $term->readline($prompt);
+		ok $authy->verify($id, $code), "Testing ->verify with real token entered by user."
+			or diag explain $authy->response;
+	} else {
+		note "Not doing sms+verify test without WWW_AUTHY_TEST_VERIFY_INTERACTIVELY ENV variable";
+	}
+
+	ok $authy->user_status($id), 'Testing ->user_status'
+		or diag explain $authy->response;
+
+	ok $authy->application_details, 'Testing ->application_details'
+		or diag explain $authy->response;
+
+	ok $authy->application_stats, 'Testing ->application_stats'
+		or diag explain $authy->response;
+
+	if ($ENV{WWW_AUTHY_TEST_DELETE_USER}) {
+		# Don't try delete_user unless specifically asked to, since the API call 
+		# to new_user doesn't tell us whether we really created it or not, and
+		# we don't want to delete a "real" account that somebody wanted to keep.
+		ok $authy->delete_user($id), 'Testing ->delete_user'
+			or diag explain $authy->response;
+	} else {
+		note "Not doing delete_user test without WWW_AUTHY_TEST_DELETE_USER ENV variable";
+	}
 } else {
-	plan skip_all => 'Not doing live tests without WWW_AUTHY_TEST_API_KEY_SANDBOX, WWW_AUTHY_TEST_API_KEY_LIVE, WWW_AUTHY_TEST_CELLPHONE_LIVE and WWW_AUTHY_TEST_EMAIL_LIVE ENV variable';
+	note 'Not doing live tests without WWW_AUTHY_TEST_API_KEY_LIVE, WWW_AUTHY_TEST_CELLPHONE_LIVE and WWW_AUTHY_TEST_EMAIL_LIVE ENV variables';
 }
 
 done_testing;
