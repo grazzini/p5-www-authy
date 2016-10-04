@@ -87,7 +87,7 @@ Gives back the full (decoded) JSON response to the last request.
 
 =cut
 
-has response => (
+has json_response => (
 	is => 'rw',
 	predicate => 1,
 	clearer => 1,
@@ -202,16 +202,41 @@ sub BUILDARGS {
 	return { @args };
 }
 
-sub request {
+sub make_request {
 	my ($self, $req) = @_;
+
+	$self->clear_errors;
+	$self->clear_json_response;
+
 	my $response = $self->useragent->request($req);
 
 	if ($response->is_success) {
-		my $decoded = eval { $self->json->decode($response->content) };
-		$self->response($decoded);
-	}
+        my $content = $response->content;
+        my $decoded = eval { $self->json->decode($content) };
 
-	return $response;
+        if ($@) {
+            $self->errors({ message => "Couldn't parse response: $@" });
+        }
+        elsif (ref($decoded) and reftype($decoded) eq 'HASH') {
+            if ($decoded->{errors}) {
+                $self->errors($decoded->{errors}) 
+            }
+            else {
+                $self->json_response($decoded);
+            }
+        }
+        else {
+            $self->errors({ message => "Invalid JSON response: $content: Not a hash reference" });
+        }
+    }
+    else {
+        $self->errors({ message => "Request failed: " . $response->status_line });
+    }
+}
+
+sub is_success {
+    my $self = shift;
+    return !$self->has_errors;
 }
 
 sub make_url {
@@ -231,26 +256,6 @@ sub parse_args {
 	@args{ @$param_names } = @$args;
 
 	return %args;
-}
-
-sub clear_state {
-	my $self = shift;
-	$self->clear_errors;
-	$self->clear_response;
-}
-
-sub handle_response {
-	my ( $self, $response ) = @_;
-
-	my $data = $self->json->decode($response->content);
-	$self->response($data);
-
-	if ($response->is_success) {
-		return 1;
-	} else {
-		$self->errors($data->{errors});
-		return 0;
-	}
 }
 
 sub new_user_request {
@@ -283,20 +288,20 @@ Returns the new user id for success, and 0 for failure.
 
 sub new_user {
 	my $self = shift;
-	$self->clear_state;
-	my $response = $self->request($self->new_user_request(@_));
-	my $data = $self->json->decode($response->content);
-	if ($response->is_success) {
-		return $data->{user}->{id};
+	$self->make_request($self->new_user_request(@_));
+
+    if ($self->is_success) {
+		return $self->json_response->{user}{id};
 	} else {
-		$self->errors($data->{errors});
 		return 0;
 	}
 }
 
 sub verify_request {
-	my ( $self, $id, $token ) = @_;
-	my $uri = $self->make_url('verify',$token,$id);
+	my $self = shift;
+	my %args = $self->parse_args(\@_, [qw(id token)]);
+
+	my $uri = $self->make_url('verify', $args{token}, $args{id});
 	return GET($uri->as_string);
 }
 
@@ -312,15 +317,8 @@ Returns 1/0 for success/failure.
 
 sub verify {
 	my $self = shift;
-	$self->clear_state;
-	my $response = $self->request($self->verify_request(@_));
-	if ($response->is_success) {
-		return 1;
-	} else {
-		my $data = $self->json->decode($response->content);
-		$self->errors($data->{errors});
-		return 0;
-	}
+	$self->make_request($self->verify_request(@_));
+    return $self->is_success;
 }
 
 sub sms_or_call_request {
@@ -368,9 +366,8 @@ Returns 1/0 for success/failure.
 
 sub sms {
 	my $self = shift;
-	$self->clear_state;
-	my $response = $self->request($self->sms_request(@_));
-	return $self->handle_response($response);
+	$self->make_request($self->sms_request(@_));
+	return $self->is_success;
 }
 
 sub call_request {
@@ -397,9 +394,8 @@ Returns 1/0 for success/failure.
 
 sub call {
 	my $self = shift;
-	$self->clear_state;
-	my $response = $self->request($self->call_request(@_));
-	return $self->handle_response($response);
+	$self->make_request($self->call_request(@_));
+	return $self->is_success;
 }
 
 sub delete_request {
@@ -422,9 +418,8 @@ Delete the user from Authy's database.
 
 sub delete_user {
 	my $self = shift;
-	$self->clear_state;
-	my $response = $self->request($self->delete_request(@_));
-	return $self->handle_response($response);
+	$self->make_request($self->delete_request(@_));
+	return $self->is_success;
 }
 
 sub register_activity_request {
@@ -458,8 +453,8 @@ The parameters are C<id>, C<type>, C<user_ip>, and C<data>.
 
 sub register_activity {
 	my $self = shift;
-	my $response = $self->request($self->register_activity_request(@_));
-	return $self->handle_response($response);
+	$self->make_request($self->register_activity_request(@_));
+	return $self->is_success;
 }
 
 sub application_info_request {
@@ -489,11 +484,8 @@ Returns some metadata Authy keeps about your application.
 
 sub application_details {
 	my $self = shift;
-	$self->clear_state;
-
-	my $response = $self->request($self->application_details_request(@_));
-	$self->handle_response($response);
-	return $self->response;
+	$self->make_request($self->application_details_request(@_));
+	return $self->json_response;
 }
 
 sub user_status_request {
@@ -507,7 +499,8 @@ sub user_status_request {
 
 =method user_status
 
-Returns some data Authy keeps about the given user.
+Returns some data Authy keeps about the given user, or undef if 
+the request fails.
 
   my $status = $authy->user_status($id);
   my $status = $authy->user_status({ id => $id });
@@ -516,11 +509,8 @@ Returns some data Authy keeps about the given user.
 
 sub user_status {
 	my $self = shift;
-	$self->clear_state;
-
-	my $response = $self->request($self->user_status_request(@_));
-	$self->handle_response($response);
-	return $self->response;
+	$self->make_request($self->user_status_request(@_));
+	return $self->json_response;
 }
 
 sub application_stats_request {
@@ -540,11 +530,8 @@ Returns some usage and billing statistics about your application.
 
 sub application_stats {
 	my $self = shift;
-	$self->clear_state;
-
-	my $response = $self->useragent->request($self->application_stats_request(@_));
-	$self->handle_response($response);
-	return $self->response;
+	$self->make_request($self->application_stats_request(@_));
+    return $self->json_response;
 }
 
 1;
