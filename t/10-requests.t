@@ -52,10 +52,10 @@ for my $sandbox (0, 1) {
 	};
 
 	subtest "sms__extra_params" => sub {
-		my $request = $authy->sms_request('123','login','msg', 1);
+		my $request = $authy->sms_request('123','login','msg', 'true');
 
 		isa_ok($request,'HTTP::Request','request sms');
-		is($request->uri->as_string,"$base/sms/123?action=login&action_message=msg&force=1",'Checking sms request uri');
+		is($request->uri->as_string,"$base/sms/123?action=login&action_message=msg&force=true",'Checking sms request uri');
 		is($request->method,'GET','Checking sms request method');
 		is($request->content,'','Checking sms request content');
 	};
@@ -64,12 +64,12 @@ for my $sandbox (0, 1) {
 		my $request = $authy->sms_request({
 			id => '123',
 			action => 'login',
-			action_message => 'msg', 
-			force => 1
+			action_message => 'msg',
+			force => 'true'
 		});
 
 		isa_ok($request,'HTTP::Request','request sms');
-		is($request->uri->as_string,"$base/sms/123?action=login&action_message=msg&force=1",
+		is($request->uri->as_string,"$base/sms/123?action=login&action_message=msg&force=true",
 			'Checking sms request uri');
 		is($request->method,'GET','Checking sms request method');
 		is($request->content,'','Checking sms request content');

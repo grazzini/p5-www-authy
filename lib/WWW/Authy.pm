@@ -357,7 +357,7 @@ in Authy's API documentation.
       id => $id,
       action => "login",
       action_message => "Here is your login key",
-      force => 1
+      force => 'true'
   });
 
 Returns 1/0 for success/failure.
