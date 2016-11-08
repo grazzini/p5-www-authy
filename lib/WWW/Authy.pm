@@ -562,6 +562,93 @@ sub application_stats {
 	return $self->json_response;
 }
 
+=method send_approval_request(\%params)
+
+The parameters are C<id>, C<message>, C<details>, C<hidden_details>, 
+C<logos>, and C<seconds_to_expire>. These are described on the Authy website.
+
+  $authy->send_approval_request({
+      id => $user_id,
+      message => "Login requested for your XYZ account",
+      details => {
+          foo => $foo,
+          bar => $bar,
+      },
+      hidden_details => {
+          ip_address => '127.0.0.1',
+      }
+      seconds_to_expire => 120,
+      logos => [
+          { res => 'default', url => 'http://example.com/logos/default.png' },
+          { res => 'low',     url => 'http://example.com/logos/low.png' },
+      ]
+  });
+
+Returns an approval request id (a UUID), or C<undef> if the request failed.
+
+=cut
+
+sub _send_approval_request_request {
+	my $self = shift;
+	my $args = shift;
+
+	my $uri = $self->_make_url("onetouch/json/users/$args->{id}/approval_requests");
+
+	my @post;
+	for my $param (qw(message seconds_to_expire)) {
+		push @post, $param, $args->{$param} if defined $args->{$param};
+	}
+	for my $param (qw(details hidden_details)) {
+		next unless defined $args->{$param} 
+			    and ref $args->{$param};
+
+		for my $k (keys %{ $args->{$param} }) {
+			# e.g. "details[Location]" => "San Francisco, CA"
+			push @post, "$param\[$k]", $args->{$param}{$k};
+		}
+	}
+	for my $logo (@{ $args->{logos} || [] }) {
+		push @post, "logos[][res]" => $logo->{res};
+		push @post, "logos[][url]" => $logo->{url};
+	}
+
+	return POST($uri->as_string, [ @post ]);
+}
+
+sub send_approval_request {
+	my $self = shift;
+	$self->_make_request($self->_send_approval_request_request(@_));
+	return unless $self->_is_success;
+	return $self->json_response->{approval_request}{uuid};
+}
+
+=method approval_request_status($id)
+
+The parameter is a uuid returned from L<send_approval_request>.
+
+Returns the request status (e.g. "pending", "approved", "denied"),
+or undef on failure.
+
+Additional response information will also be available afterwards
+in C<< $authy->json_response >>.
+
+=cut
+
+sub _approval_request_status_request {
+	my $self = shift;
+	my $uuid = shift;
+
+	my $uri = $self->_make_url('onetouch/json/approval_requests', $uuid);
+	return GET($uri);
+}
+
+sub approval_request_status {
+	my $self = shift;
+	$self->_make_request($self->_approval_request_status_request(@_));
+	return unless $self->_is_success;
+	return $self->json_response->{approval_request}{status};
+}
+
 1;
 
 =head1 SUPPORT

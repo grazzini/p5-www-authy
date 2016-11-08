@@ -152,6 +152,30 @@ for my $sandbox (0, 1) {
 		is($request->uri->as_string,"$base/protected/json/app/stats",'Checking application_stats uri');
 		is($request->method,'GET','Checking application_stats request method');
 	};
+
+	subtest "send_approval_request" => sub {
+		my $request = $authy->_send_approval_request_request({
+			id => 123,
+			message => "Message",
+			details => { foo => 42 },
+			hidden_details => { bar => 123 },
+			seconds_to_expire => 120,
+			logos => [
+				{ res => 'default', url => 'default.png' },
+			]
+		});
+
+		isa_ok($request,'HTTP::Request','send approval request');
+		is($request->uri->as_string,"$base/onetouch/json/users/123/approval_requests",'Checking send_approval_request uri');
+		is($request->method,'POST','Checking send_approval_request request method');
+		is($request->content,'message=Message&seconds_to_expire=120&details%5Bfoo%5D=42&hidden_details%5Bbar%5D=123&logos%5B%5D%5Bres%5D=default&logos%5B%5D%5Burl%5D=default.png');
+	};
+
+	subtest "approval_request_status" => sub {
+		my $request = $authy->_approval_request_status_request('1234');
+		is($request->uri->as_string,"$base/onetouch/json/approval_requests/1234",'Checking approval_request_status uri');
+		is($request->method,'GET','Checking approval_request_status request method');
+	};
 }
 
 done_testing;

@@ -47,6 +47,30 @@ if ($ENV{WWW_AUTHY_TEST_API_KEY_LIVE}
 		note "Not doing sms+verify test without WWW_AUTHY_TEST_VERIFY_INTERACTIVELY ENV variable";
 	}
 
+	if ($ENV{WWW_AUTHY_TEST_ONETOUCH_INTERACTIVELY}) {
+		require Term::ReadLine;
+		my $uuid = $authy->send_approval_request({
+			id => $id,
+			message => "Testing WWW::Authy",
+			details => {
+				Test => __FILE__,
+				User => scalar(getpwuid $>),
+			},
+		});
+		ok $uuid, "Received UUID"
+			or diag explain $authy->errors;
+
+		my $status = $authy->approval_request_status($uuid);
+		ok $status or diag explain $authy->errors;
+		is $status, 'pending';
+
+		my $term   = Term::ReadLine->new("WWW::Authy-test");
+		my $prompt = "Please approve the request and then hit ENTER to proceed";
+		$term->readline($prompt);
+
+		is $authy->approval_request_status($uuid), 'approved';
+	}
+
 	ok $authy->user_status($id), 'Testing ->user_status'
 		or diag explain $authy->errors;
 
