@@ -263,7 +263,7 @@ sub _is_success {
 
 sub _make_url {
 	my ( $self, @args ) = @_;
-	my $url = join('/',$self->base_uri,'protected','json',@args);
+	my $url = join('/',$self->base_uri, @args);
 	return URI->new($url);
 }
 
@@ -295,7 +295,7 @@ sub _new_user_request {
 	my $self = shift;
 	my %args = $self->_parse_args(\@_, [qw(email cellphone country_code send_install_link)]);
 
-	my $uri = $self->_make_url('users','new');
+	my $uri = $self->_make_url('protected/json/users/new');
 	my @post = (
 		'user[email]'        => $args{email},
 		'user[cellphone]'    => $args{cellphone},
@@ -333,7 +333,7 @@ sub _verify_request {
 	my $self = shift;
 	my %args = $self->_parse_args(\@_, [qw(id token)]);
 
-	my $uri = $self->_make_url('verify', $args{token}, $args{id});
+	my $uri = $self->_make_url("protected/json/verify/$args{token}/$args{id}");
 	return GET($uri->as_string);
 }
 
@@ -371,7 +371,7 @@ sub _sms_or_call_request {
 	my @params = qw(action action_message force); 
 	my %args   = $self->_parse_args(\@_, [id => @params]);
 
-	my $uri = $self->_make_url($type,$args{id});
+	my $uri = $self->_make_url("protected/json/$type/$args{id}");
 
 	for my $param (@params) {
 		$uri->query_param( $param => $args{$param} ) 
@@ -436,7 +436,7 @@ sub _delete_request {
 	my $self = shift;
 	my %args = $self->_parse_args(\@_, [qw(id user_ip)]);
 
-	my $uri = $self->_make_url('users', $args{id}, 'delete');
+	my $uri = $self->_make_url("protected/json/users/$args{id}/delete");
 
 	my @post;
 	push @post, user_ip => $args{user_ip} if $args{user_ip};
@@ -469,7 +469,7 @@ sub _register_activity_request {
 	my @params = qw( type user_ip data );
 	my %args   = $self->_parse_args(\@_, [id => @params]);
 
-	my $uri = $self->_make_url('users', $args{id}, 'register_activity');
+	my $uri = $self->_make_url("protected/json/users/$args{id}/register_activity");
 	my @post;
 
 	for my $param (@params) {
@@ -500,7 +500,7 @@ sub _application_info_request {
 	my $type = shift;
 	my %args = $self->_parse_args(\@_, [qw( user_ip )]);
 
-	my $uri = $self->_make_url('app', $type);
+	my $uri = $self->_make_url("protected/json/app/$type");
 	$uri->query_param( user_ip => $args{user_ip} ) if $args{user_ip};
 	return GET($uri->as_string);
 }
@@ -530,7 +530,7 @@ sub _user_status_request {
 	my $self = shift;
 	my %args = $self->_parse_args(\@_, [qw( id user_ip )]);
 
-	my $uri = $self->_make_url('users', $args{id}, 'status');
+	my $uri = $self->_make_url("protected/json/users/$args{id}/status");
 	$uri->query_param( user_ip => $args{user_ip} ) if $args{user_ip};
 	return GET($uri->as_string);
 }
