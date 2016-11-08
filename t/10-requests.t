@@ -13,7 +13,7 @@ for my $sandbox (0, 1) {
 	is($authy->useragent->default_headers->header('X-Authy-API-Key'), 123456, 'Checking API-Key header');
 
 	subtest "new_user" => sub {
-		my $request = $authy->new_user_request('em@il','123','12','0');
+		my $request = $authy->_new_user_request('em@il','123','12','0');
 		isa_ok($request,'HTTP::Request','request new user');
 		is($request->uri->as_string,"$base/users/new",'Checking new user request uri');
 		is($request->method,'POST','Checking new user request method');
@@ -22,7 +22,7 @@ for my $sandbox (0, 1) {
 	};
 
 	subtest "new_user__hashref" => sub {
-		my $request = $authy->new_user_request({
+		my $request = $authy->_new_user_request({
 			email => 'em@il',
 			cellphone => '123', 
 		});
@@ -34,7 +34,7 @@ for my $sandbox (0, 1) {
 	};
 
 	subtest "verify" => sub {
-		my $request = $authy->verify_request(1,123456);
+		my $request = $authy->_verify_request(1,123456);
 
 		isa_ok($request,'HTTP::Request','request verify');
 		is($request->uri->as_string,"$base/verify/123456/1",'Checking verify request uri');
@@ -43,7 +43,7 @@ for my $sandbox (0, 1) {
 	};
 
 	subtest "sms" => sub {
-		my $request = $authy->sms_request('123');
+		my $request = $authy->_sms_request('123');
 
 		isa_ok($request,'HTTP::Request','request new user');
 		is($request->uri->as_string,"$base/sms/123",'Checking sms request uri');
@@ -52,7 +52,7 @@ for my $sandbox (0, 1) {
 	};
 
 	subtest "sms__extra_params" => sub {
-		my $request = $authy->sms_request('123','login','msg', 'true');
+		my $request = $authy->_sms_request('123','login','msg', 'true');
 
 		isa_ok($request,'HTTP::Request','request sms');
 		is($request->uri->as_string,"$base/sms/123?action=login&action_message=msg&force=true",'Checking sms request uri');
@@ -61,7 +61,7 @@ for my $sandbox (0, 1) {
 	};
 
 	subtest "sms__extra_params_hashref" => sub {
-		my $request = $authy->sms_request({
+		my $request = $authy->_sms_request({
 			id => '123',
 			action => 'login',
 			action_message => 'msg',
@@ -76,7 +76,7 @@ for my $sandbox (0, 1) {
 	};
 
 	subtest "call" => sub {
-		my $request = $authy->call_request('123');
+		my $request = $authy->_call_request('123');
 
 		isa_ok($request,'HTTP::Request','request password via phonecall');
 		is($request->uri->as_string,"$base/call/123",'Checking call request uri');
@@ -85,7 +85,7 @@ for my $sandbox (0, 1) {
 	};
 
 	subtest "delete" => sub {
-		my $request = $authy->delete_request('123');
+		my $request = $authy->_delete_request('123');
 
 		isa_ok($request,'HTTP::Request','request delete user');
 		is($request->uri->as_string,"$base/users/123/delete",'Checking sms request uri');
@@ -94,7 +94,7 @@ for my $sandbox (0, 1) {
 	};
 
 	subtest "delete__hashref" => sub {
-		my $request = $authy->delete_request({ id => '123', user_ip => '127.0.0.1' });
+		my $request = $authy->_delete_request({ id => '123', user_ip => '127.0.0.1' });
 
 		isa_ok($request,'HTTP::Request','request delete');
 		is($request->uri->as_string,"$base/users/123/delete",'Checking delete request uri');
@@ -103,7 +103,7 @@ for my $sandbox (0, 1) {
 	};
 
 	subtest "register_activity" => sub {
-		my $request = $authy->register_activity_request('123','login','localhost','{}');
+		my $request = $authy->_register_activity_request('123','login','localhost','{}');
 
 		isa_ok($request,'HTTP::Request','request register activity');
 		is($request->uri->as_string,"$base/users/123/register_activity",
@@ -114,7 +114,7 @@ for my $sandbox (0, 1) {
 	};
 
 	subtest "register_activity__hashref" => sub {
-		my $request = $authy->register_activity_request({
+		my $request = $authy->_register_activity_request({
 			id => '123',
 			type => 'login',
 			user_ip => 'localhost',
@@ -130,7 +130,7 @@ for my $sandbox (0, 1) {
 	};
 
 	subtest "application_details" => sub {
-		my $request = $authy->application_details_request;
+		my $request = $authy->_application_details_request;
 
 		isa_ok($request,'HTTP::Request','request application details');
 		is($request->uri->as_string,"$base/app/details",'Checking application_details uri');
@@ -138,7 +138,7 @@ for my $sandbox (0, 1) {
 	};
 
 	subtest "user_status" => sub {
-		my $request = $authy->user_status_request(123);
+		my $request = $authy->_user_status_request(123);
 
 		isa_ok($request,'HTTP::Request','request user_status');
 		is($request->uri->as_string,"$base/users/123/status",'Checking user_status uri');
@@ -146,7 +146,7 @@ for my $sandbox (0, 1) {
 	};
 
 	subtest "application_stats" => sub {
-		my $request = $authy->application_stats_request;
+		my $request = $authy->_application_stats_request;
 
 		isa_ok($request,'HTTP::Request','request application stats');
 		is($request->uri->as_string,"$base/app/stats",'Checking application_stats uri');

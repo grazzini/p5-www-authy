@@ -257,8 +257,8 @@ sub _make_request {
 }
 
 sub _is_success {
-    my $self = shift;
-    return !$self->has_errors;
+	my $self = shift;
+	return !$self->has_errors;
 }
 
 sub _make_url {
@@ -280,7 +280,18 @@ sub _parse_args {
 	return %args;
 }
 
-sub new_user_request {
+=method new_user
+
+Takes the email, the cellphone number and optional the country code as
+parameters and gives back the id for this user. Authy will generate the
+user if he doesn't exist (verified by cellphone number), on a matching
+entry it just gives back the existing user id.
+
+Returns the new user id for success, and 0 for failure.
+
+=cut
+
+sub _new_user_request {
 	my $self = shift;
 	my %args = $self->_parse_args(\@_, [qw(email cellphone country_code send_install_link)]);
 
@@ -297,34 +308,15 @@ sub new_user_request {
 	return POST($uri->as_string, [ @post ]);
 }
 
-=method new_user
-
-Takes the email, the cellphone number and optional the country code as
-parameters and gives back the id for this user. Authy will generate the
-user if he doesn't exist (verified by cellphone number), on a matching
-entry it just gives back the existing user id.
-
-Returns the new user id for success, and 0 for failure.
-
-=cut
-
 sub new_user {
 	my $self = shift;
-	$self->_make_request($self->new_user_request(@_));
+	$self->_make_request($self->_new_user_request(@_));
 
-    if ($self->_is_success) {
+	if ($self->_is_success) {
 		return $self->json_response->{user}{id};
 	} else {
 		return 0;
 	}
-}
-
-sub verify_request {
-	my $self = shift;
-	my %args = $self->_parse_args(\@_, [qw(id token)]);
-
-	my $uri = $self->_make_url('verify', $args{token}, $args{id});
-	return GET($uri->as_string);
 }
 
 =method verify
@@ -337,32 +329,18 @@ Returns 1/0 for success/failure.
 
 =cut
 
-sub verify {
+sub _verify_request {
 	my $self = shift;
-	$self->_make_request($self->verify_request(@_));
-    return $self->_is_success;
-}
+	my %args = $self->_parse_args(\@_, [qw(id token)]);
 
-sub sms_or_call_request {
-	my $self = shift;
-	my $type = shift;
-
-	my @params = qw(action action_message force); 
-	my %args   = $self->_parse_args(\@_, [id => @params]);
-
-	my $uri = $self->_make_url($type,$args{id});
-
-	for my $param (@params) {
-		$uri->query_param( $param => $args{$param} ) 
-			if defined $args{$param};
-	}
-
+	my $uri = $self->_make_url('verify', $args{token}, $args{id});
 	return GET($uri->as_string);
 }
 
-sub sms_request {
+sub verify {
 	my $self = shift;
-	$self->sms_or_call_request(sms => @_);
+	$self->_make_request($self->_verify_request(@_));
+	return $self->_is_success;
 }
 
 =method sms
@@ -386,15 +364,32 @@ Returns 1/0 for success/failure.
 
 =cut
 
-sub sms {
+sub _sms_or_call_request {
 	my $self = shift;
-	$self->_make_request($self->sms_request(@_));
-	return $self->_is_success;
+	my $type = shift;
+
+	my @params = qw(action action_message force); 
+	my %args   = $self->_parse_args(\@_, [id => @params]);
+
+	my $uri = $self->_make_url($type,$args{id});
+
+	for my $param (@params) {
+		$uri->query_param( $param => $args{$param} ) 
+			if defined $args{$param};
+	}
+
+	return GET($uri->as_string);
 }
 
-sub call_request {
+sub _sms_request {
 	my $self = shift;
-	$self->sms_or_call_request(call => @_);
+	$self->_sms_or_call_request(sms => @_);
+}
+
+sub sms {
+	my $self = shift;
+	$self->_make_request($self->_sms_request(@_));
+	return $self->_is_success;
 }
 
 =method call
@@ -414,13 +409,30 @@ Returns 1/0 for success/failure.
 
 =cut
 
+sub _call_request {
+	my $self = shift;
+	$self->_sms_or_call_request(call => @_);
+}
+
 sub call {
 	my $self = shift;
-	$self->_make_request($self->call_request(@_));
+	$self->_make_request($self->_call_request(@_));
 	return $self->_is_success;
 }
 
-sub delete_request {
+=method delete_user
+
+Delete the user from Authy's database.
+
+The parameters are C<id> and (optionally) C<ip_address>.
+
+  $authy->delete_user($id);
+  $authy->delete_user($id, $ip_address);
+  $authy->delete_user({ id => $id, ... });
+
+=cut
+
+sub _delete_request {
 	my $self = shift;
 	my %args = $self->_parse_args(\@_, [qw(id user_ip)]);
 
@@ -432,32 +444,10 @@ sub delete_request {
 	return POST($uri->as_string, \@post);
 }
 
-=method delete_user
-
-Delete the user from Authy's database.
-
-=cut
-
 sub delete_user {
 	my $self = shift;
-	$self->_make_request($self->delete_request(@_));
+	$self->_make_request($self->_delete_request(@_));
 	return $self->_is_success;
-}
-
-sub register_activity_request {
-	my $self = shift;
-
-	my @params = qw( type user_ip data );
-	my %args   = $self->_parse_args(\@_, [id => @params]);
-
-	my $uri = $self->_make_url('users', $args{id}, 'register_activity');
-	my @post;
-
-	for my $param (@params) {
-		push @post, $param, $args{$param} if defined $args{$param};
-	}
-
-	return POST($uri->as_string, \@post);
 }
 
 =method register_activity
@@ -473,25 +463,26 @@ The parameters are C<id>, C<type>, C<user_ip>, and C<data>.
 
 =cut
 
+sub _register_activity_request {
+	my $self = shift;
+
+	my @params = qw( type user_ip data );
+	my %args   = $self->_parse_args(\@_, [id => @params]);
+
+	my $uri = $self->_make_url('users', $args{id}, 'register_activity');
+	my @post;
+
+	for my $param (@params) {
+		push @post, $param, $args{$param} if defined $args{$param};
+	}
+
+	return POST($uri->as_string, \@post);
+}
+
 sub register_activity {
 	my $self = shift;
-	$self->_make_request($self->register_activity_request(@_));
+	$self->_make_request($self->_register_activity_request(@_));
 	return $self->_is_success;
-}
-
-sub application_info_request {
-	my $self = shift;
-	my $type = shift;
-	my %args = $self->_parse_args(\@_, [qw( user_ip )]);
-
-	my $uri = $self->_make_url('app', $type);
-	$uri->query_param( user_ip => $args{user_ip} ) if $args{user_ip};
-	return GET($uri->as_string);
-}
-
-sub application_details_request {
-	my $self = shift;
-	return $self->application_info_request('details');
 }
 
 =method application_details
@@ -504,19 +495,25 @@ Returns some metadata Authy keeps about your application.
 
 =cut
 
-sub application_details {
+sub _application_info_request {
 	my $self = shift;
-	$self->_make_request($self->application_details_request(@_));
-	return $self->json_response;
-}
+	my $type = shift;
+	my %args = $self->_parse_args(\@_, [qw( user_ip )]);
 
-sub user_status_request {
-	my $self = shift;
-	my %args = $self->_parse_args(\@_, [qw( id user_ip )]);
-
-	my $uri = $self->_make_url('users', $args{id}, 'status');
+	my $uri = $self->_make_url('app', $type);
 	$uri->query_param( user_ip => $args{user_ip} ) if $args{user_ip};
 	return GET($uri->as_string);
+}
+
+sub _application_details_request {
+	my $self = shift;
+	return $self->_application_info_request('details');
+}
+
+sub application_details {
+	my $self = shift;
+	$self->_make_request($self->_application_details_request(@_));
+	return $self->json_response;
 }
 
 =method user_status
@@ -529,15 +526,19 @@ the request fails.
 
 =cut
 
-sub user_status {
+sub _user_status_request {
 	my $self = shift;
-	$self->_make_request($self->user_status_request(@_));
-	return $self->json_response;
+	my %args = $self->_parse_args(\@_, [qw( id user_ip )]);
+
+	my $uri = $self->_make_url('users', $args{id}, 'status');
+	$uri->query_param( user_ip => $args{user_ip} ) if $args{user_ip};
+	return GET($uri->as_string);
 }
 
-sub application_stats_request {
+sub user_status {
 	my $self = shift;
-	return $self->application_info_request('stats');
+	$self->_make_request($self->_user_status_request(@_));
+	return $self->json_response;
 }
 
 =method application_stats
@@ -550,10 +551,15 @@ Returns some usage and billing statistics about your application.
 
 =cut
 
+sub _application_stats_request {
+	my $self = shift;
+	return $self->_application_info_request('stats');
+}
+
 sub application_stats {
 	my $self = shift;
-	$self->_make_request($self->application_stats_request(@_));
-    return $self->json_response;
+	$self->_make_request($self->_application_stats_request(@_));
+	return $self->json_response;
 }
 
 1;
