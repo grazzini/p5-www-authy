@@ -52,7 +52,7 @@ This library gives an easy way to access the API of L<Authy|https://www.authy.co
 
 =cut
 
-use Carp qw( croak );
+use Carp qw( carp croak );
 
 our $VERSION ||= '0.000';
 
@@ -81,7 +81,18 @@ has sandbox => (
 
 sub _build_sandbox { 0 }
 
-=attr response
+=attr http_response
+
+Gives back the (raw) HTTP::Response for the last request.
+
+=cut
+
+has http_response => (
+	is => 'rw',
+	clearer => 1,
+);
+
+=attr json_response
 
 Gives back the full (decoded) JSON response to the last request.
 
@@ -89,7 +100,6 @@ Gives back the full (decoded) JSON response to the last request.
 
 has json_response => (
 	is => 'rw',
-	predicate => 1,
 	clearer => 1,
 );
 
@@ -209,29 +219,40 @@ sub make_request {
 	$self->clear_json_response;
 
 	my $response = $self->useragent->request($req);
+	$self->http_response($response);
 
-	if ($response->is_success) {
-        my $content = $response->content;
-        my $decoded = eval { $self->json->decode($content) };
+	# This is just a warning - we'll still attempt to process the response 
+	# body, which often contains a useful error.
+	unless ($response->is_success) {
+		carp sprintf "[Authy] HTTP Request for %s failed: %s",
+		$req->uri, $response->status_line;
+	}
 
-        if ($@) {
-            $self->errors({ message => "Couldn't parse response: $@" });
-        }
-        elsif (ref($decoded) and reftype($decoded) eq 'HASH') {
-            if ($decoded->{errors}) {
-                $self->errors($decoded->{errors}) 
-            }
-            else {
-                $self->json_response($decoded);
-            }
-        }
-        else {
-            $self->errors({ message => "Invalid JSON response: $content: Not a hash reference" });
-        }
-    }
-    else {
-        $self->errors({ message => "Request failed: " . $response->status_line });
-    }
+	if ($response->content) {
+		my $content = $response->content;
+		my $decoded = eval { $self->json->decode($content) };
+
+		if ($@) {
+			$self->errors({ message => "Couldn't parse response: $@" });
+		}
+		elsif (ref($decoded) and reftype($decoded) eq 'HASH') {
+			if ($decoded->{errors}) {
+				$self->errors($decoded->{errors}) 
+			}
+			else {
+				$self->json_response($decoded);
+			}
+		}
+		else {
+			$self->errors({ message => "Invalid JSON response: $content: Not a hash reference" });
+		}
+	}
+	elsif (!$response->is_success) {
+		$self->errors({ message => "Request failed: " . $response->status_line });
+	}
+	else {
+		$self->errors({ message => "Request failed: No response from server" });
+	}
 }
 
 sub is_success {
