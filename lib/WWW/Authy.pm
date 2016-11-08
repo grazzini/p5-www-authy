@@ -89,7 +89,7 @@ Gives back the (raw) HTTP::Response for the last request.
 
 has http_response => (
 	is => 'rw',
-	clearer => 1,
+	clearer => '_clear_http_response',
 );
 
 =attr json_response
@@ -100,7 +100,7 @@ Gives back the full (decoded) JSON response to the last request.
 
 has json_response => (
 	is => 'rw',
-	clearer => 1,
+	clearer => '_clear_json_response',
 );
 
 =cut
@@ -114,7 +114,7 @@ Gives back the error of the last request, if any given.
 has errors => (
 	is => 'rw',
 	predicate => 1,
-	clearer => 1,
+	clearer => '_clear_errors',
 );
 
 =attr base_uri
@@ -212,11 +212,12 @@ sub BUILDARGS {
 	return { @args };
 }
 
-sub make_request {
+sub _make_request {
 	my ($self, $req) = @_;
 
-	$self->clear_errors;
-	$self->clear_json_response;
+	$self->_clear_errors;
+	$self->_clear_json_response;
+	$self->_clear_http_response;
 
 	my $response = $self->useragent->request($req);
 	$self->http_response($response);
@@ -255,18 +256,18 @@ sub make_request {
 	}
 }
 
-sub is_success {
+sub _is_success {
     my $self = shift;
     return !$self->has_errors;
 }
 
-sub make_url {
+sub _make_url {
 	my ( $self, @args ) = @_;
 	my $url = join('/',$self->base_uri,'protected','json',@args);
 	return URI->new($url);
 }
 
-sub parse_args {
+sub _parse_args {
 	my ($self, $args, $param_names) = @_;
 
 	if (ref $args->[0] and reftype($args->[0]) eq 'HASH') {
@@ -281,9 +282,9 @@ sub parse_args {
 
 sub new_user_request {
 	my $self = shift;
-	my %args = $self->parse_args(\@_, [qw(email cellphone country_code send_install_link)]);
+	my %args = $self->_parse_args(\@_, [qw(email cellphone country_code send_install_link)]);
 
-	my $uri = $self->make_url('users','new');
+	my $uri = $self->_make_url('users','new');
 	my @post = (
 		'user[email]'        => $args{email},
 		'user[cellphone]'    => $args{cellphone},
@@ -309,9 +310,9 @@ Returns the new user id for success, and 0 for failure.
 
 sub new_user {
 	my $self = shift;
-	$self->make_request($self->new_user_request(@_));
+	$self->_make_request($self->new_user_request(@_));
 
-    if ($self->is_success) {
+    if ($self->_is_success) {
 		return $self->json_response->{user}{id};
 	} else {
 		return 0;
@@ -320,9 +321,9 @@ sub new_user {
 
 sub verify_request {
 	my $self = shift;
-	my %args = $self->parse_args(\@_, [qw(id token)]);
+	my %args = $self->_parse_args(\@_, [qw(id token)]);
 
-	my $uri = $self->make_url('verify', $args{token}, $args{id});
+	my $uri = $self->_make_url('verify', $args{token}, $args{id});
 	return GET($uri->as_string);
 }
 
@@ -338,8 +339,8 @@ Returns 1/0 for success/failure.
 
 sub verify {
 	my $self = shift;
-	$self->make_request($self->verify_request(@_));
-    return $self->is_success;
+	$self->_make_request($self->verify_request(@_));
+    return $self->_is_success;
 }
 
 sub sms_or_call_request {
@@ -347,9 +348,9 @@ sub sms_or_call_request {
 	my $type = shift;
 
 	my @params = qw(action action_message force); 
-	my %args   = $self->parse_args(\@_, [id => @params]);
+	my %args   = $self->_parse_args(\@_, [id => @params]);
 
-	my $uri = $self->make_url($type,$args{id});
+	my $uri = $self->_make_url($type,$args{id});
 
 	for my $param (@params) {
 		$uri->query_param( $param => $args{$param} ) 
@@ -387,8 +388,8 @@ Returns 1/0 for success/failure.
 
 sub sms {
 	my $self = shift;
-	$self->make_request($self->sms_request(@_));
-	return $self->is_success;
+	$self->_make_request($self->sms_request(@_));
+	return $self->_is_success;
 }
 
 sub call_request {
@@ -415,15 +416,15 @@ Returns 1/0 for success/failure.
 
 sub call {
 	my $self = shift;
-	$self->make_request($self->call_request(@_));
-	return $self->is_success;
+	$self->_make_request($self->call_request(@_));
+	return $self->_is_success;
 }
 
 sub delete_request {
 	my $self = shift;
-	my %args = $self->parse_args(\@_, [qw(id user_ip)]);
+	my %args = $self->_parse_args(\@_, [qw(id user_ip)]);
 
-	my $uri = $self->make_url('users', $args{id}, 'delete');
+	my $uri = $self->_make_url('users', $args{id}, 'delete');
 
 	my @post;
 	push @post, user_ip => $args{user_ip} if $args{user_ip};
@@ -439,17 +440,17 @@ Delete the user from Authy's database.
 
 sub delete_user {
 	my $self = shift;
-	$self->make_request($self->delete_request(@_));
-	return $self->is_success;
+	$self->_make_request($self->delete_request(@_));
+	return $self->_is_success;
 }
 
 sub register_activity_request {
 	my $self = shift;
 
 	my @params = qw( type user_ip data );
-	my %args   = $self->parse_args(\@_, [id => @params]);
+	my %args   = $self->_parse_args(\@_, [id => @params]);
 
-	my $uri = $self->make_url('users', $args{id}, 'register_activity');
+	my $uri = $self->_make_url('users', $args{id}, 'register_activity');
 	my @post;
 
 	for my $param (@params) {
@@ -474,16 +475,16 @@ The parameters are C<id>, C<type>, C<user_ip>, and C<data>.
 
 sub register_activity {
 	my $self = shift;
-	$self->make_request($self->register_activity_request(@_));
-	return $self->is_success;
+	$self->_make_request($self->register_activity_request(@_));
+	return $self->_is_success;
 }
 
 sub application_info_request {
 	my $self = shift;
 	my $type = shift;
-	my %args = $self->parse_args(\@_, [qw( user_ip )]);
+	my %args = $self->_parse_args(\@_, [qw( user_ip )]);
 
-	my $uri = $self->make_url('app', $type);
+	my $uri = $self->_make_url('app', $type);
 	$uri->query_param( user_ip => $args{user_ip} ) if $args{user_ip};
 	return GET($uri->as_string);
 }
@@ -505,15 +506,15 @@ Returns some metadata Authy keeps about your application.
 
 sub application_details {
 	my $self = shift;
-	$self->make_request($self->application_details_request(@_));
+	$self->_make_request($self->application_details_request(@_));
 	return $self->json_response;
 }
 
 sub user_status_request {
 	my $self = shift;
-	my %args = $self->parse_args(\@_, [qw( id user_ip )]);
+	my %args = $self->_parse_args(\@_, [qw( id user_ip )]);
 
-	my $uri = $self->make_url('users', $args{id}, 'status');
+	my $uri = $self->_make_url('users', $args{id}, 'status');
 	$uri->query_param( user_ip => $args{user_ip} ) if $args{user_ip};
 	return GET($uri->as_string);
 }
@@ -530,7 +531,7 @@ the request fails.
 
 sub user_status {
 	my $self = shift;
-	$self->make_request($self->user_status_request(@_));
+	$self->_make_request($self->user_status_request(@_));
 	return $self->json_response;
 }
 
@@ -551,7 +552,7 @@ Returns some usage and billing statistics about your application.
 
 sub application_stats {
 	my $self = shift;
-	$self->make_request($self->application_stats_request(@_));
+	$self->_make_request($self->application_stats_request(@_));
     return $self->json_response;
 }
 
