@@ -222,13 +222,6 @@ sub _make_request {
 	my $response = $self->useragent->request($req);
 	$self->http_response($response);
 
-	# This is just a warning - we'll still attempt to process the response 
-	# body, which often contains a useful error.
-	unless ($response->is_success) {
-		carp sprintf "[Authy] HTTP Request for %s failed: %s",
-		$req->uri, $response->status_line;
-	}
-
 	if ($response->content) {
 		my $content = $response->content;
 		my $decoded = eval { $self->json->decode($content) };
@@ -237,11 +230,14 @@ sub _make_request {
 			$self->errors({ message => "Couldn't parse response: $@" });
 		}
 		elsif (ref($decoded) and reftype($decoded) eq 'HASH') {
-			if ($decoded->{errors}) {
-				$self->errors($decoded->{errors}) 
+			if ($decoded->{success}) {
+				$self->json_response($decoded);
 			}
 			else {
-				$self->json_response($decoded);
+				$self->errors({ 
+                    message => $decoded->{message},
+                    code    => $decoded->{error_code}
+                });
 			}
 		}
 		else {
@@ -249,9 +245,11 @@ sub _make_request {
 		}
 	}
 	elsif (!$response->is_success) {
+		carp sprintf "[Authy] HTTP Request for %s failed: %s", $req->uri, $response->status_line;
 		$self->errors({ message => "Request failed: " . $response->status_line });
 	}
 	else {
+		carp sprintf "[Authy] HTTP Request for %s failed: No response from server", $req->uri;
 		$self->errors({ message => "Request failed: No response from server" });
 	}
 }
